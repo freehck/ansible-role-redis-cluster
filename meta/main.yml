@@ -1,0 +1,60 @@
+---
+galaxy_info:
+  author: Dmitrii Kashin
+  description: redis cluster
+  role_name: redis_cluster
+  license: MIT
+
+  min_ansible_version: 2.9
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+
+  galaxy_tags:
+    - redis
+    - redis-cluster
+
+dependencies: []
+dependencies:
+  
+  - role: freehck.sysctl
+    vars:
+      sysctl_opt_name: "vm.overcommit_memory"
+      sysctl_opt_value: "1"
+
+  - role: freehck.sysctl
+    vars:
+      sysctl_opt_name: "net.core.somaxconn"
+      sysctl_opt_value: "65536"
+
+  - role: freehck.pkg_install
+    vars:
+      pkg_install_packages:
+        - sysfsutils
+        - make
+        - gcc
+        - pkg-config
+
+  - role: aboveops.template
+    vars:
+      template_content: |
+        kernel/mm/transparent_hugepage/enabled = never
+      template_dest: /etc/sysfs.conf
+
+  - role: aboveops.systemd
+    vars:
+      systemd_service_name: sysfsutils
+      systemd_service_state: restarted
+    when: template_result is changed
+
+  - role: freehck.mkdir
+    vars:
+      mkdir_directories:
+        - "{{ redis_cluster_src_dir }}"
+        - "{{ redis_cluster_install_dir }}/bin"
+

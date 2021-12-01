@@ -1,0 +1,196 @@
+---
+
+### BUILD REDIS AND INSTALL BINARIES
+
+- name: "{{ redis_cluster_task_prefix }} check if redis installed: {{ redis_cluster_install_dir }}/bin/redis-server"
+  stat:
+    path: "{{ redis_cluster_install_dir }}/bin/redis-server"
+  register: redis_cluster_binary
+  changed_when: false
+
+- block:
+
+  - name: "{{ redis_cluster_task_prefix }} download tarball: {{ redis_cluster_tarball_tempfile }}"
+    get_url:
+      url: "{{ redis_cluster_tarball_url }}"
+      dest: "{{ redis_cluster_tarball_tempfile }}"
+      checksum: "sha256:{{ redis_cluster_tarball_sha256sum }}"
+  
+  - name: "{{ redis_cluster_task_prefix }} unpack tarball: {{ redis_cluster_tarball_tempfile }}"
+    unarchive:
+      src: "{{ redis_cluster_tarball_tempfile }}"
+      dest: "{{ redis_cluster_src_dir }}"
+      remote_src: true
+      extra_opts: [ "--strip-components=1" ]
+  
+  - name: "{{ redis_cluster_task_prefix }} build binaries: {{ redis_cluster_src_dir }}"
+    command: "make"
+    args:
+      chdir: "{{ redis_cluster_src_dir }}"
+
+  - name: "{{ redis_cluster_task_prefix }} install binaries: {{ redis_cluster_install_dir }}/bin"
+    copy:
+      src: "{{ redis_cluster_src_dir }}/src/{{ file }}"
+      dest: "{{ redis_cluster_install_dir }}/bin/{{ file }}"
+      mode: 0755
+      remote_src: true
+    loop_control:
+      loop_var: file
+    loop:
+      - redis-server
+      - redis-cli
+
+  when: not redis_cluster_binary.stat.exists
+
+### CONFIGURE SYSTEM FOR REDIS
+
+- name: "{{ redis_cluster_task_prefix }} create profile"
+  copy:
+    dest: /etc/profile.d/redis-server.sh
+    content: 'PATH=$PATH:{{ redis_cluster_install_dir }}/bin'
+
+- name: "{{ redis_cluster_task_prefix }} create group: {{ redis_cluster_group }}"
+  group:
+    name: "{{ redis_cluster_group }}"
+    state: present
+
+- name: "{{ redis_cluster_task_prefix }} create user: {{ redis_cluster_user }}"
+  user:
+    name: "{{ redis_cluster_user }}"
+    group: "{{ redis_cluster_group }}"
+    shell: /bin/false
+    state: present
+    system: true
+    createhome: false
+
+- name: "{{ redis_cluster_task_prefix }} create redis directories"
+  file:
+    path: "{{ path }}"
+    state: directory
+    owner: "{{ redis_cluster_user }}"
+    group: "{{ redis_cluster_group }}"
+    mode: 0755
+  loop_control:
+    loop_var: path
+  loop:
+    - "{{ redis_cluster_log_dir }}"
+    - "{{ redis_cluster_conf_dir }}"
+    - "{{ redis_cluster_run_dir }}"
+    - "{{ redis_cluster_data_dir }}"
+
+- name: "{{ redis_cluster_task_prefix }} make redis run-dir persistent"
+  copy:
+    dest: /etc/tmpfiles.d/redis.conf
+    content: 'd {{ redis_cluster_run_dir }} 0755 {{ redis_cluster_user }} {{ redis_cluster_group }} - -'
+
+- name: "{{ redis_cluster_task_prefix }} copy redis-server systemd service"
+  template:
+    src: "{{ redis_cluster_service_tmpl }}"
+    dest: /lib/systemd/system/redis-server@.service
+    mode: 0644
+
+### CONFIGURE AND START REDIS NODES
+
+- name: "{{ redis_cluster_task_prefix }} copy redis config"
+  template:
+    src: "{{ redis_cluster_conf_tmpl }}"
+    dest: "{{ redis_cluster_conf_dir }}/{{ node.name }}.conf"
+  loop_control:
+    loop_var: node
+  loop: "{{ redis_cluster_nodes }}"
+  when: node.host == inventory_hostname
+  notify: "{{ redis_cluster_task_prefix }} restart redis-server"
+
+- name: "{{ redis_cluster_task_prefix }} start redis nodes"
+  systemd:
+    name: "redis-server@{{ node.name }}"
+    state: started
+    enabled: true
+  loop_control:
+    loop_var: node
+  loop: "{{ redis_cluster_nodes }}"
+  when:
+    - node.host == inventory_hostname
+
+# CREATE CLUSTER OF MASTERS
+
+- name: "{{ redis_cluster_task_prefix }} check if masters created: {{ redis_cluster_conf_dir }}/redis-cluster-masters.created"
+  stat:
+    path: "{{ redis_cluster_conf_dir }}/redis-cluster-masters.created"
+  register: redis_cluster_masters_created
+  changed_when: false
+
+- block:
+  
+  - name: "{{ redis_cluster_task_prefix }} collect master ips"
+    set_fact:
+      redis_cluster_master_instances: "{% if node.is_master | default(false) %}{{ redis_cluster_master_instances | default('') + node.addr + ':' + node.port | default('3679') | string + ' ' }}{% else %}{{ redis_cluster_master_instances }}{% endif %}"
+    loop_control:
+      loop_var: node
+    loop: "{{ redis_cluster_nodes }}"
+    run_once: true
+  
+  - name: "{{ redis_cluster_task_prefix }} create cluster of masters: {{ redis_cluster_master_instances }}"
+    shell: "{{ redis_cluster_install_dir }}/bin/redis-cli --cluster create {{ redis_cluster_master_instances }} --cluster-yes"
+    run_once: true
+  
+  - name: "{{ redis_cluster_task_prefix }} remember we created cluster of masters"
+    file:
+      path: "{{ redis_cluster_conf_dir }}/redis-cluster-masters.created"
+      state: touch
+      owner: "{{ redis_cluster_user }}"
+      group: "{{ redis_cluster_group }}"
+      mode: "0440"
+
+  when: not redis_cluster_masters_created.stat.exists
+
+# ADD SLAVES TO CLUSTER
+
+- include: get_master_ids.yml
+  loop_control:
+    loop_var: master_instance
+  loop: "{{ redis_cluster_nodes | selectattr('is_master', 'defined') }}"
+
+#- debug:
+#    var: redis_cluster_master_nodes_with_ids
+#
+#- debug:
+#    msg: "{% set master = (redis_cluster_master_nodes_with_ids | selectattr('name', 'equalto', slave.slave_of))[0] %}redis-cli --cluster add-node {{ slave.addr }}:{{ slave.port }} {{ master.addr }}:{{ master.port }} --cluster-slave --cluster-master-id {{ master.id }}"
+#  loop_control:
+#    loop_var: slave
+#  loop: "{{ redis_cluster_nodes | selectattr('is_master', 'undefined') }}"
+#  when: slave.host == inventory_hostname
+
+- name: "{{ redis_cluster_task_prefix }} check if slaves created: {{ redis_cluster_conf_dir }}/redis-cluster-slaves.created"
+  stat:
+    path: "{{ redis_cluster_conf_dir }}/redis-cluster-slaves.created"
+  register: redis_cluster_slaves_created
+  changed_when: false
+
+- block:
+
+  - name: "{{ redis_cluster_task_prefix }} register slaves"
+    shell: |
+      {% set master = (redis_cluster_master_nodes_with_ids | selectattr('name', 'equalto', slave.slave_of))[0] %}
+      {{ redis_cluster_install_dir }}/bin/redis-cli --cluster add-node {{ slave.addr }}:{{ slave.port }} {{ master.addr }}:{{ master.port }} --cluster-slave --cluster-master-id {{ master.id }}
+    loop_control:
+      loop_var: slave
+    loop: "{{ redis_cluster_nodes | selectattr('is_master', 'undefined') }}"
+    when: slave.host == inventory_hostname
+    args:
+      creates: "{{ redis_cluster_conf_dir }}/redis-cluster-slaves.created"
+  
+  - name: "{{ redis_cluster_task_prefix }} remember we created slaves on this host"
+    file:
+      path: "{{ redis_cluster_conf_dir }}/redis-cluster-slaves.created"
+      state: touch
+      owner: "{{ redis_cluster_user }}"
+      group: "{{ redis_cluster_group }}"
+      mode: "0440"
+
+  when: not redis_cluster_slaves_created.stat.exists
+
+
+# https://alex.dzyoba.com/blog/redis-cluster/
+# https://github.com/chaordic/ansible-role-redis-cluster/blob/master/tasks/slave.yml
+# https://github.com/chaordic/ansible-role-redis-cluster/blob/master/tasks/config.yml

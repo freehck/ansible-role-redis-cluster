@@ -1,0 +1,104 @@
+# {{ ansible_managed }}
+
+daemonize no
+
+pidfile {{ redis_cluster_run_dir }}/redis_{{ node.name }}.pid
+
+bind {{ node.addr }} {{ redis_cluster_additional_bind_addrs }}
+port {{ node.port | default('3679') }}
+
+tcp-backlog {{ node.tcp_backlog | default('65536') }}
+
+tcp-keepalive {{ node.tcp_keepalive | default('300') }}
+
+protected-mode {{ node.protected_mode | default(false) | ternary('yes','no') }}
+
+timeout {{ node.timeout | default('86400') }}
+
+loglevel {{ node.loglevel | default('notice') }}
+
+logfile {{ redis_cluster_log_dir }}/{{ node.name }}.log
+
+save {{ node.persistence_save | default('""') }}
+
+dbfilename dump_{{ node.name }}.rdb
+
+repl-diskless-sync {{ node.repl_diskless_sync | default(false) | ternary('yes','no') }}
+
+repl-diskless-sync-delay {{ node.repl_diskless_delay | default('5') }}
+
+repl-timeout {{ node.repl_timeout | default('60') }}
+
+repl-disable-tcp-nodelay {{ node.repl_disable_tcp_nodelay | default(false) | ternary('yes','no') }}
+
+repl-backlog-size {{ node.repl_backlog_size | default('1mb') }}
+
+repl-backlog-ttl {{ node.repl_backlog_ttl | default('3600') }}
+
+slave-priority {{ node.slave_priority | default('100') }}
+
+{% if node.maxmemory is defined %}
+maxmemory {{ node.maxmemory }}
+{% endif %}
+
+maxmemory-policy {{ node.maxmemory_policy | default('volatile-lru') }}
+
+maxmemory-samples {{ node.maxmemory_samples | default('27') }}
+
+appendonly no
+
+appendfilename "appendonly.aof"
+
+appendfsync everysec
+
+no-appendfsync-on-rewrite no
+
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+aof-load-truncated yes
+
+cluster-enabled {{ node.cluster_enabled | default(true) | ternary('yes','no') }}
+
+{% if node.cluster_enabled | default(true) %}
+
+cluster-config-file {{ redis_cluster_conf_dir }}/nodes-{{ node.name }}.conf
+
+cluster-node-timeout {{ node.cluster_node_timeout | default('15000') }}
+
+cluster-slave-validity-factor {{ node.cluster_slave_validity_factor | default('10') }}
+
+cluster-migration-barrier {{ node.cluster_migration_barrier | default('1') }}
+
+cluster-require-full-coverage {{ node.cluster_require_full_coverage | default(false) | ternary('yes','no') }}
+
+{% endif %}
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit slave {{ node.client_output_buffer_limit_slave_hard | default('256mb') }} {{ node.client_output_buffer_limit_slave_soft | default('64mb') }} {{ node.client_output_buffer_limit_slave_time | default('60') }}
+client-output-buffer-limit pubsub 32mb 8mb 60
+
+hz 10
+
+aof-rewrite-incremental-fsync yes
+
+dir {{ redis_cluster_data_dir }}
+
+########################### ACTIVE DEFRAGMENTATION #######################
+
+# Enabled active defragmentation
+activedefrag {{ node.activedefrag | default(false) | ternary('yes','no') }}
+
+# Minimum amount of fragmentation waste to start active defrag
+active-defrag-ignore-bytes {{ node.active_defrag_ignore_bytes | default('100mb') }}
+
+# Minimum percentage of fragmentation to start active defrag
+active-defrag-threshold-lower {{ node.active_defrag_threshold_lower | default('10') }}
+
+# Maximum percentage of fragmentation at which we use maximum effort
+active-defrag-threshold-upper {{ node.active_defrag_threshold_upper | default('100') }}
+
+# Minimal effort for defrag in CPU percentage
+active-defrag-cycle-min {{ node.active_defrag_cycle_min | default('5') }}
+
+# Maximal effort for defrag in CPU percentage
+active-defrag-cycle-max {{ node.active_defrag_cycle_min | default('75') }}

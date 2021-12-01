@@ -1,0 +1,35 @@
+[Unit]
+Description=Advanced key-value store
+Documentation=http://redis.io/documentation, man:redis-server(1)
+After=network.target
+PartOf=redis-server.service
+
+[Service]
+Type=simple
+ExecStart={{ redis_cluster_install_dir }}/bin/redis-server {{ redis_cluster_conf_dir }}/%i.conf
+PIDFile={{ redis_cluster_run_dir }}/redis_%i.pid
+TimeoutStopSec=0
+Restart=on-failure
+User={{ redis_cluster_user }}
+Group={{ redis_cluster_group }}
+
+ExecStop=/bin/kill -s TERM $MAINPID
+LimitNOFILE=65536
+
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ReadOnlyDirectories=/
+ReadWriteDirectories=-{{ redis_cluster_data_dir }}
+ReadWriteDirectories=-{{ redis_cluster_log_dir }}
+ReadWriteDirectories=-{{ redis_cluster_run_dir }}
+CapabilityBoundingSet=~CAP_SYS_PTRACE
+
+# redis-server writes its own config file when in cluster mode so we allow
+# writing there (NB. ProtectSystem=true over ProtectSystem=full)
+ProtectSystem=true
+ReadWriteDirectories=-{{ redis_cluster_conf_dir }}
+
+[Install]
+WantedBy=multi-user.target
+Alias=redis.service

@@ -1,0 +1,18 @@
+---
+redis_cluster_task_prefix: "=== REDIS_CLUSTER ==="
+
+redis_cluster_version: "6.2.6"
+redis_cluster_tarball_url: "https://download.redis.io/releases/redis-{{ redis_cluster_version }}.tar.gz"
+redis_cluster_tarball_sha256sum: "5b2b8b7a50111ef395bf1c1d5be11e6e167ac018125055daa8b5c2317ae131ab"
+redis_cluster_tarball_tempfile: "/tmp/redis-{{ redis_cluster_version }}.tar.gz"
+redis_cluster_src_dir: "/tmp/redis-{{ redis_cluster_version }}"
+redis_cluster_install_dir: "/opt/redis-{{ redis_cluster_version }}"
+redis_cluster_group: "redis"
+redis_cluster_user: "redis"
+redis_cluster_log_dir: "/var/log/redis"
+redis_cluster_conf_dir: "/etc/redis"
+redis_cluster_run_dir: "/var/run/redis"
+redis_cluster_data_dir: "/var/lib/redis"
+redis_cluster_conf_tmpl: "redis.conf.j2"
+redis_cluster_service_tmpl: "redis-server.service.j2"
+redis_cluster_additional_bind_addrs: "127.0.0.1"

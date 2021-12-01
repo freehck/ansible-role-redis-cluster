@@ -1,0 +1,11 @@
+---
+
+- name: "{{ redis_cluster_task_prefix }} restart redis-server"
+  systemd:
+    name: "redis-server@{{ node.name }}"
+    state: restarted
+  loop_control:
+    loop_var: node
+  loop: "{{ redis_cluster_nodes }}"
+  when: node.host == inventory_hostname
+  throttle: 1
