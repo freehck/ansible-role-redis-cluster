@@ -19,7 +19,6 @@ galaxy_info:
     - redis
     - redis-cluster
 
-dependencies: []
 dependencies:
   
   - role: freehck.sysctl
@@ -57,4 +56,3 @@ dependencies:
       mkdir_directories:
         - "{{ redis_cluster_src_dir }}"
         - "{{ redis_cluster_install_dir }}/bin"
-
