@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   author: Dmitrii Kashin
-  description: redis cluster
+  description: redis cluster with cross replication
   role_name: redis_cluster
   license: MIT
 
